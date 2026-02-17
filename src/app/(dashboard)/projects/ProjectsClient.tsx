@@ -6,6 +6,7 @@ import type { Project } from '@/types';
 import Modal from '@/components/ui/Modal';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import Pagination from '@/components/ui/Pagination';
+import { useToast } from '@/components/ui/Toast';
 import { Plus, Pencil, Trash2 } from 'lucide-react';
 
 const ITEMS_PER_PAGE = 10;
@@ -22,6 +23,7 @@ export default function ProjectsClient({ initialProjects }: ProjectsClientProps)
     const [formData, setFormData] = useState({ name: '', description: '' });
     const [loading, setLoading] = useState(false);
     const [currentPage, setCurrentPage] = useState(1);
+    const { showToast } = useToast();
 
     const totalPages = Math.ceil(projects.length / ITEMS_PER_PAGE);
     const paginatedItems = projects.slice(
@@ -40,16 +42,22 @@ export default function ProjectsClient({ initialProjects }: ProjectsClientProps)
         setLoading(true);
 
         if (editingProject) {
-            const updated = await updateProject(editingProject.id, formData);
-            if (updated) {
+            const result = await updateProject(editingProject.id, formData);
+            if (result.success) {
                 setProjects((prev) =>
-                    prev.map((p) => (p.id === updated.id ? updated : p))
+                    prev.map((p) => (p.id === (result.data as unknown as Project).id ? (result.data as unknown as Project) : p))
                 );
+                showToast('Obra atualizada com sucesso!', 'success');
+            } else {
+                showToast(result.error, 'error');
             }
         } else {
-            const created = await createProject(formData);
-            if (created) {
-                setProjects((prev) => [...prev, created]);
+            const result = await createProject(formData);
+            if (result.success) {
+                setProjects((prev) => [...prev, result.data as unknown as Project]);
+                showToast('Obra criada com sucesso!', 'success');
+            } else {
+                showToast(result.error, 'error');
             }
         }
 
@@ -60,8 +68,13 @@ export default function ProjectsClient({ initialProjects }: ProjectsClientProps)
     const handleDelete = async () => {
         if (!deleteTarget) return;
         setLoading(true);
-        await deleteProject(deleteTarget.id);
-        setProjects((prev) => prev.filter((p) => p.id !== deleteTarget.id));
+        const result = await deleteProject(deleteTarget.id);
+        if (result.success) {
+            setProjects((prev) => prev.filter((p) => p.id !== deleteTarget.id));
+            showToast('Obra excluída com sucesso!', 'success');
+        } else {
+            showToast(result.error, 'error');
+        }
         setLoading(false);
         setDeleteTarget(null);
     };
@@ -84,56 +97,42 @@ export default function ProjectsClient({ initialProjects }: ProjectsClientProps)
 
             {projects.length === 0 ? (
                 <div className="empty-state">
-                    <p style={{ fontSize: '14px' }}>Nenhuma obra cadastrada</p>
-                    <p style={{ fontSize: '13px', marginTop: '4px' }}>
-                        Clique em &quot;Nova Obra&quot; para começar
-                    </p>
+                    <p>Nenhuma obra cadastrada</p>
+                    <p className="text-muted-sm">Clique em &quot;Nova Obra&quot; para começar</p>
                 </div>
             ) : (
-                <div className="glass-card" style={{ overflow: 'hidden' }}>
+                <div className="glass-card overflow-hidden">
                     <div className="table-container">
                         <table className="data-table">
                             <thead>
                                 <tr>
                                     <th>Nome</th>
                                     <th>Descrição</th>
-                                    <th style={{ width: '100px', textAlign: 'right' }}>Ações</th>
+                                    <th className="text-right" style={{ width: '100px' }}>Ações</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {paginatedItems.map((project) => (
                                     <tr key={project.id}>
-                                        <td style={{ fontWeight: 500 }}>{project.name}</td>
-                                        <td style={{ color: '#9b9a97' }}>
+                                        <td className="text-bold">{project.name}</td>
+                                        <td className="text-muted">
                                             {project.description || '—'}
                                         </td>
                                         <td>
-                                            <div style={{ display: 'flex', gap: '4px', justifyContent: 'flex-end' }}>
+                                            <div className="action-row">
                                                 <button
                                                     onClick={() => openEdit(project)}
-                                                    style={{
-                                                        background: 'transparent',
-                                                        border: 'none',
-                                                        borderRadius: '4px',
-                                                        padding: '6px',
-                                                        cursor: 'pointer',
-                                                        color: '#9b9a97',
-                                                    }}
+                                                    className="icon-btn"
                                                     title="Editar"
+                                                    aria-label={`Editar ${project.name}`}
                                                 >
                                                     <Pencil size={15} />
                                                 </button>
                                                 <button
                                                     onClick={() => setDeleteTarget(project)}
-                                                    style={{
-                                                        background: 'transparent',
-                                                        border: 'none',
-                                                        borderRadius: '4px',
-                                                        padding: '6px',
-                                                        cursor: 'pointer',
-                                                        color: '#9b9a97',
-                                                    }}
+                                                    className="icon-btn"
                                                     title="Excluir"
+                                                    aria-label={`Excluir ${project.name}`}
                                                 >
                                                     <Trash2 size={15} />
                                                 </button>
@@ -154,13 +153,12 @@ export default function ProjectsClient({ initialProjects }: ProjectsClientProps)
                 </div>
             )}
 
-            {/* Modal Create/Edit */}
             <Modal
                 isOpen={isModalOpen}
                 onClose={resetForm}
                 title={editingProject ? 'Editar Obra' : 'Nova Obra'}
             >
-                <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <form onSubmit={handleSubmit} className="form-modal">
                     <div>
                         <label className="form-label">Nome</label>
                         <input
@@ -184,7 +182,7 @@ export default function ProjectsClient({ initialProjects }: ProjectsClientProps)
                             placeholder="Descrição opcional"
                         />
                     </div>
-                    <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '4px' }}>
+                    <div className="form-actions">
                         <button type="button" className="btn-secondary" onClick={resetForm}>
                             Cancelar
                         </button>
@@ -195,7 +193,6 @@ export default function ProjectsClient({ initialProjects }: ProjectsClientProps)
                 </form>
             </Modal>
 
-            {/* Confirm Delete */}
             <ConfirmDialog
                 isOpen={!!deleteTarget}
                 onClose={() => setDeleteTarget(null)}

@@ -6,6 +6,7 @@ import type { Category, TransactionType } from '@/types';
 import Modal from '@/components/ui/Modal';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import Pagination from '@/components/ui/Pagination';
+import { useToast } from '@/components/ui/Toast';
 import { Plus, Pencil, Trash2 } from 'lucide-react';
 
 const ITEMS_PER_PAGE = 10;
@@ -23,6 +24,7 @@ export default function CategoriesClient({ initialCategories }: CategoriesClient
     const [loading, setLoading] = useState(false);
     const [filter, setFilter] = useState<'ALL' | TransactionType>('ALL');
     const [currentPage, setCurrentPage] = useState(1);
+    const { showToast } = useToast();
 
     const filtered = useMemo(() => {
         setCurrentPage(1);
@@ -48,16 +50,22 @@ export default function CategoriesClient({ initialCategories }: CategoriesClient
         setLoading(true);
 
         if (editingCategory) {
-            const updated = await updateCategory(editingCategory.id, formData);
-            if (updated) {
+            const result = await updateCategory(editingCategory.id, formData);
+            if (result.success) {
                 setCategories((prev) =>
-                    prev.map((c) => (c.id === updated.id ? updated : c))
+                    prev.map((c) => (c.id === (result.data as unknown as Category).id ? (result.data as unknown as Category) : c))
                 );
+                showToast('Categoria atualizada com sucesso!', 'success');
+            } else {
+                showToast(result.error, 'error');
             }
         } else {
-            const created = await createCategory(formData);
-            if (created) {
-                setCategories((prev) => [...prev, created]);
+            const result = await createCategory(formData);
+            if (result.success) {
+                setCategories((prev) => [...prev, result.data as unknown as Category]);
+                showToast('Categoria criada com sucesso!', 'success');
+            } else {
+                showToast(result.error, 'error');
             }
         }
 
@@ -68,8 +76,13 @@ export default function CategoriesClient({ initialCategories }: CategoriesClient
     const handleDelete = async () => {
         if (!deleteTarget) return;
         setLoading(true);
-        await deleteCategory(deleteTarget.id);
-        setCategories((prev) => prev.filter((c) => c.id !== deleteTarget.id));
+        const result = await deleteCategory(deleteTarget.id);
+        if (result.success) {
+            setCategories((prev) => prev.filter((c) => c.id !== deleteTarget.id));
+            showToast('Categoria excluída com sucesso!', 'success');
+        } else {
+            showToast(result.error, 'error');
+        }
         setLoading(false);
         setDeleteTarget(null);
     };
@@ -97,23 +110,12 @@ export default function CategoriesClient({ initialCategories }: CategoriesClient
             </div>
 
             {/* Filter tabs */}
-            <div style={{ display: 'flex', gap: '2px', marginBottom: '20px', borderBottom: '1px solid #ebebea', paddingBottom: '0' }}>
+            <div className="filter-tabs">
                 {tabs.map((tab) => (
                     <button
                         key={tab.value}
                         onClick={() => setFilter(tab.value)}
-                        style={{
-                            padding: '8px 12px',
-                            fontSize: '13px',
-                            fontWeight: 500,
-                            color: filter === tab.value ? '#37352f' : '#9b9a97',
-                            background: 'transparent',
-                            border: 'none',
-                            borderBottom: filter === tab.value ? '2px solid #37352f' : '2px solid transparent',
-                            cursor: 'pointer',
-                            transition: 'all 0.15s ease',
-                            marginBottom: '-1px',
-                        }}
+                        className={`filter-tab ${filter === tab.value ? 'active' : ''}`}
                     >
                         {tab.label}
                     </button>
@@ -122,55 +124,43 @@ export default function CategoriesClient({ initialCategories }: CategoriesClient
 
             {filtered.length === 0 ? (
                 <div className="empty-state">
-                    <p style={{ fontSize: '14px' }}>Nenhuma categoria encontrada</p>
+                    <p>Nenhuma categoria encontrada</p>
                 </div>
             ) : (
-                <div className="glass-card" style={{ overflow: 'hidden' }}>
+                <div className="glass-card overflow-hidden">
                     <div className="table-container">
                         <table className="data-table">
                             <thead>
                                 <tr>
                                     <th>Nome</th>
                                     <th>Tipo</th>
-                                    <th style={{ width: '100px', textAlign: 'right' }}>Ações</th>
+                                    <th className="text-right" style={{ width: '100px' }}>Ações</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {paginatedItems.map((category) => (
                                     <tr key={category.id}>
-                                        <td style={{ fontWeight: 500 }}>{category.name}</td>
+                                        <td className="text-bold">{category.name}</td>
                                         <td>
                                             <span className={category.type === 'INCOME' ? 'badge badge-income' : 'badge badge-expense'}>
                                                 {category.type === 'INCOME' ? 'Receita' : 'Despesa'}
                                             </span>
                                         </td>
                                         <td>
-                                            <div style={{ display: 'flex', gap: '4px', justifyContent: 'flex-end' }}>
+                                            <div className="action-row">
                                                 <button
                                                     onClick={() => openEdit(category)}
-                                                    style={{
-                                                        background: 'transparent',
-                                                        border: 'none',
-                                                        borderRadius: '4px',
-                                                        padding: '6px',
-                                                        cursor: 'pointer',
-                                                        color: '#9b9a97',
-                                                    }}
+                                                    className="icon-btn"
                                                     title="Editar"
+                                                    aria-label={`Editar ${category.name}`}
                                                 >
                                                     <Pencil size={15} />
                                                 </button>
                                                 <button
                                                     onClick={() => setDeleteTarget(category)}
-                                                    style={{
-                                                        background: 'transparent',
-                                                        border: 'none',
-                                                        borderRadius: '4px',
-                                                        padding: '6px',
-                                                        cursor: 'pointer',
-                                                        color: '#9b9a97',
-                                                    }}
+                                                    className="icon-btn"
                                                     title="Excluir"
+                                                    aria-label={`Excluir ${category.name}`}
                                                 >
                                                     <Trash2 size={15} />
                                                 </button>
@@ -191,13 +181,12 @@ export default function CategoriesClient({ initialCategories }: CategoriesClient
                 </div>
             )}
 
-            {/* Modal */}
             <Modal
                 isOpen={isModalOpen}
                 onClose={resetForm}
                 title={editingCategory ? 'Editar Categoria' : 'Nova Categoria'}
             >
-                <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <form onSubmit={handleSubmit} className="form-modal">
                     <div>
                         <label className="form-label">Nome</label>
                         <input
@@ -222,7 +211,7 @@ export default function CategoriesClient({ initialCategories }: CategoriesClient
                             <option value="EXPENSE">Despesa</option>
                         </select>
                     </div>
-                    <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '4px' }}>
+                    <div className="form-actions">
                         <button type="button" className="btn-secondary" onClick={resetForm}>
                             Cancelar
                         </button>

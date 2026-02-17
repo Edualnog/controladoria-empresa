@@ -10,7 +10,10 @@ import type { Transaction, Project, Category, TransactionType } from '@/types';
 import Modal from '@/components/ui/Modal';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import Pagination from '@/components/ui/Pagination';
-import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight, Calendar } from 'lucide-react';
+import PeriodSelector from '@/components/ui/PeriodSelector';
+import { usePeriodSelector } from '@/hooks/usePeriodSelector';
+import { useToast } from '@/components/ui/Toast';
+import { Plus, Pencil, Trash2 } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/lib/utils';
 
 const ITEMS_PER_PAGE = 10;
@@ -19,38 +22,6 @@ interface TransactionsClientProps {
     initialTransactions: Transaction[];
     projects: Project[];
     categories: Category[];
-}
-
-type PeriodMode = 'month' | 'week';
-
-function getMonthLabel(year: number, month: number): string {
-    const date = new Date(year, month);
-    return date.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
-}
-
-function getWeekRange(date: Date): { start: Date; end: Date } {
-    const day = date.getDay();
-    const diff = day === 0 ? -6 : 1 - day; // Monday as start
-    const start = new Date(date);
-    start.setDate(date.getDate() + diff);
-    start.setHours(0, 0, 0, 0);
-    const end = new Date(start);
-    end.setDate(start.getDate() + 6);
-    end.setHours(23, 59, 59, 999);
-    return { start, end };
-}
-
-function getWeekLabel(start: Date, end: Date): string {
-    const sDay = start.getDate().toString().padStart(2, '0');
-    const sMonth = (start.getMonth() + 1).toString().padStart(2, '0');
-    const eDay = end.getDate().toString().padStart(2, '0');
-    const eMonth = (end.getMonth() + 1).toString().padStart(2, '0');
-    const year = end.getFullYear();
-    return `${sDay}/${sMonth} — ${eDay}/${eMonth}/${year}`;
-}
-
-function formatDateStr(d: Date): string {
-    return d.toISOString().split('T')[0];
 }
 
 export default function TransactionsClient({
@@ -75,89 +46,20 @@ export default function TransactionsClient({
         installments: '1',
     });
 
-    // Period state
-    const now = new Date();
-    const [periodMode, setPeriodMode] = useState<PeriodMode>('month');
-    const [selectedYear, setSelectedYear] = useState(now.getFullYear());
-    const [selectedMonth, setSelectedMonth] = useState(now.getMonth());
-    const [weekAnchor, setWeekAnchor] = useState(() => {
-        const { start } = getWeekRange(now);
-        return start;
-    });
-
-    // Computed period range
-    const periodRange = useMemo(() => {
-        if (periodMode === 'month') {
-            const start = new Date(selectedYear, selectedMonth, 1);
-            const end = new Date(selectedYear, selectedMonth + 1, 0); // Last day of month
-            return {
-                startStr: formatDateStr(start),
-                endStr: formatDateStr(end),
-                label: getMonthLabel(selectedYear, selectedMonth),
-            };
-        } else {
-            const { start, end } = getWeekRange(weekAnchor);
-            return {
-                startStr: formatDateStr(start),
-                endStr: formatDateStr(end),
-                label: getWeekLabel(start, end),
-            };
-        }
-    }, [periodMode, selectedYear, selectedMonth, weekAnchor]);
-
-    // Navigate period
-    const goBack = () => {
-        if (periodMode === 'month') {
-            if (selectedMonth === 0) {
-                setSelectedMonth(11);
-                setSelectedYear((y) => y - 1);
-            } else {
-                setSelectedMonth((m) => m - 1);
-            }
-        } else {
-            setWeekAnchor((prev) => {
-                const d = new Date(prev);
-                d.setDate(d.getDate() - 7);
-                return d;
-            });
-        }
-    };
-
-    const goForward = () => {
-        if (periodMode === 'month') {
-            if (selectedMonth === 11) {
-                setSelectedMonth(0);
-                setSelectedYear((y) => y + 1);
-            } else {
-                setSelectedMonth((m) => m + 1);
-            }
-        } else {
-            setWeekAnchor((prev) => {
-                const d = new Date(prev);
-                d.setDate(d.getDate() + 7);
-                return d;
-            });
-        }
-    };
-
-    const goToday = () => {
-        const today = new Date();
-        setSelectedYear(today.getFullYear());
-        setSelectedMonth(today.getMonth());
-        setWeekAnchor(getWeekRange(today).start);
-    };
+    const period = usePeriodSelector();
+    const { showToast } = useToast();
 
     // Filter transactions by period and type
     const filtered = useMemo(() => {
         setCurrentPage(1);
         let result = transactions.filter(
-            (t) => t.date >= periodRange.startStr && t.date <= periodRange.endStr
+            (t) => t.date >= period.periodRange.startStr && t.date <= period.periodRange.endStr
         );
         if (filter !== 'ALL') {
             result = result.filter((t) => t.type === filter);
         }
         return result.sort((a, b) => b.date.localeCompare(a.date));
-    }, [transactions, periodRange, filter]);
+    }, [transactions, period.periodRange, filter]);
 
     const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
     const paginatedItems = filtered.slice(
@@ -207,20 +109,26 @@ export default function TransactionsClient({
         };
 
         if (editingTransaction) {
-            const updated = await updateTransaction(editingTransaction.id, payload);
-            if (updated) {
+            const result = await updateTransaction(editingTransaction.id, payload);
+            if (result.success) {
                 setTransactions((prev) =>
-                    prev.map((t) => (t.id === updated.id ? updated : t))
+                    prev.map((t) => (t.id === (result.data as unknown as Transaction).id ? (result.data as unknown as Transaction) : t))
                 );
+                showToast('Lançamento atualizado com sucesso!', 'success');
+            } else {
+                showToast(result.error, 'error');
             }
         } else {
-            const created = await createTransaction(payload);
-            if (created) {
-                if (Array.isArray(created)) {
-                    setTransactions((prev) => [...created, ...prev]);
+            const result = await createTransaction(payload);
+            if (result.success) {
+                if (Array.isArray(result.data)) {
+                    setTransactions((prev) => [...(result.data as unknown as Transaction[]), ...prev]);
                 } else {
-                    setTransactions((prev) => [created, ...prev]);
+                    setTransactions((prev) => [(result.data as unknown as Transaction), ...prev]);
                 }
+                showToast('Lançamento criado com sucesso!', 'success');
+            } else {
+                showToast(result.error, 'error');
             }
         }
 
@@ -231,8 +139,13 @@ export default function TransactionsClient({
     const handleDelete = async () => {
         if (!deleteTarget) return;
         setLoading(true);
-        await deleteTransaction(deleteTarget.id);
-        setTransactions((prev) => prev.filter((t) => t.id !== deleteTarget.id));
+        const result = await deleteTransaction(deleteTarget.id);
+        if (result.success) {
+            setTransactions((prev) => prev.filter((t) => t.id !== deleteTarget.id));
+            showToast('Lançamento excluído com sucesso!', 'success');
+        } else {
+            showToast(result.error, 'error');
+        }
         setLoading(false);
         setDeleteTarget(null);
     };
@@ -267,184 +180,27 @@ export default function TransactionsClient({
                 </button>
             </div>
 
-            {/* Period Selector */}
-            <div
-                style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: '12px 16px',
-                    background: '#fafafa',
-                    borderRadius: '8px',
-                    border: '1px solid #ebebea',
-                    marginBottom: '16px',
-                    flexWrap: 'wrap',
-                    gap: '12px',
-                }}
-            >
-                {/* Mode toggle */}
-                <div style={{ display: 'flex', gap: '2px', background: '#e5e5e5', borderRadius: '6px', padding: '2px' }}>
-                    <button
-                        onClick={() => setPeriodMode('month')}
-                        style={{
-                            padding: '5px 12px',
-                            fontSize: '12px',
-                            fontWeight: 500,
-                            borderRadius: '5px',
-                            border: 'none',
-                            cursor: 'pointer',
-                            background: periodMode === 'month' ? '#ffffff' : 'transparent',
-                            color: periodMode === 'month' ? '#37352f' : '#737373',
-                            boxShadow: periodMode === 'month' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
-                            transition: 'all 0.15s ease',
-                        }}
-                    >
-                        Mês
-                    </button>
-                    <button
-                        onClick={() => setPeriodMode('week')}
-                        style={{
-                            padding: '5px 12px',
-                            fontSize: '12px',
-                            fontWeight: 500,
-                            borderRadius: '5px',
-                            border: 'none',
-                            cursor: 'pointer',
-                            background: periodMode === 'week' ? '#ffffff' : 'transparent',
-                            color: periodMode === 'week' ? '#37352f' : '#737373',
-                            boxShadow: periodMode === 'week' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
-                            transition: 'all 0.15s ease',
-                        }}
-                    >
-                        Semana
-                    </button>
-                </div>
-
-                {/* Period navigation */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <button
-                        onClick={goBack}
-                        style={{
-                            background: '#ffffff',
-                            border: '1px solid #e5e5e5',
-                            borderRadius: '6px',
-                            padding: '5px 8px',
-                            cursor: 'pointer',
-                            color: '#737373',
-                            display: 'flex',
-                            alignItems: 'center',
-                        }}
-                    >
-                        <ChevronLeft size={16} />
-                    </button>
-                    <span
-                        style={{
-                            fontSize: '14px',
-                            fontWeight: 600,
-                            color: '#37352f',
-                            minWidth: '180px',
-                            textAlign: 'center',
-                            textTransform: 'capitalize',
-                        }}
-                    >
-                        {periodRange.label}
-                    </span>
-                    <button
-                        onClick={goForward}
-                        style={{
-                            background: '#ffffff',
-                            border: '1px solid #e5e5e5',
-                            borderRadius: '6px',
-                            padding: '5px 8px',
-                            cursor: 'pointer',
-                            color: '#737373',
-                            display: 'flex',
-                            alignItems: 'center',
-                        }}
-                    >
-                        <ChevronRight size={16} />
-                    </button>
-                </div>
-
-                {/* Today button */}
-                <button
-                    onClick={goToday}
-                    style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '4px',
-                        padding: '5px 12px',
-                        fontSize: '12px',
-                        fontWeight: 500,
-                        background: '#ffffff',
-                        border: '1px solid #e5e5e5',
-                        borderRadius: '6px',
-                        cursor: 'pointer',
-                        color: '#737373',
-                    }}
-                >
-                    <Calendar size={13} />
-                    Hoje
-                </button>
-            </div>
+            <PeriodSelector {...period} />
 
             {/* Period summary */}
-            <div
-                style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(3, 1fr)',
-                    gap: '12px',
-                    marginBottom: '16px',
-                }}
-            >
-                <div
-                    style={{
-                        padding: '12px 16px',
-                        background: '#f0fdf4',
-                        borderRadius: '8px',
-                        border: '1px solid #bbf7d0',
-                    }}
-                >
-                    <p style={{ fontSize: '11px', color: '#16a34a', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                        Entradas
-                    </p>
-                    <p style={{ fontSize: '18px', fontWeight: 700, color: '#16a34a', marginTop: '2px' }}>
+            <div className="summary-cards" style={{ gridTemplateColumns: 'repeat(3, 1fr)', marginBottom: '16px' }}>
+                <div className="summary-card summary-card--income">
+                    <p className="summary-card__label summary-card__label--income">Entradas</p>
+                    <p className="summary-card__value" style={{ color: '#16a34a' }}>
                         {formatCurrency(periodTotals.income)}
                     </p>
                 </div>
-                <div
-                    style={{
-                        padding: '12px 16px',
-                        background: '#fef2f2',
-                        borderRadius: '8px',
-                        border: '1px solid #fecaca',
-                    }}
-                >
-                    <p style={{ fontSize: '11px', color: '#dc2626', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                        Saídas
-                    </p>
-                    <p style={{ fontSize: '18px', fontWeight: 700, color: '#dc2626', marginTop: '2px' }}>
+                <div className="summary-card summary-card--expense">
+                    <p className="summary-card__label summary-card__label--expense">Saídas</p>
+                    <p className="summary-card__value" style={{ color: '#dc2626' }}>
                         {formatCurrency(periodTotals.expense)}
                     </p>
                 </div>
-                <div
-                    style={{
-                        padding: '12px 16px',
-                        background: '#fafafa',
-                        borderRadius: '8px',
-                        border: '1px solid #e5e5e5',
-                    }}
-                >
-                    <p style={{ fontSize: '11px', color: '#737373', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                        Saldo do Período
-                    </p>
+                <div className="summary-card summary-card--balance">
+                    <p className="summary-card__label summary-card__label--balance">Saldo do Período</p>
                     <p
-                        style={{
-                            fontSize: '18px',
-                            fontWeight: 700,
-                            color: periodTotals.balance >= 0 ? '#16a34a' : '#dc2626',
-                            marginTop: '2px',
-                        }}
+                        className="summary-card__value"
+                        style={{ color: periodTotals.balance >= 0 ? '#16a34a' : '#dc2626' }}
                     >
                         {formatCurrency(periodTotals.balance)}
                     </p>
@@ -452,23 +208,12 @@ export default function TransactionsClient({
             </div>
 
             {/* Filter tabs */}
-            <div style={{ display: 'flex', gap: '2px', marginBottom: '20px', borderBottom: '1px solid #ebebea', paddingBottom: '0' }}>
+            <div className="filter-tabs">
                 {tabs.map((tab) => (
                     <button
                         key={tab.value}
                         onClick={() => setFilter(tab.value)}
-                        style={{
-                            padding: '8px 12px',
-                            fontSize: '13px',
-                            fontWeight: 500,
-                            color: filter === tab.value ? '#37352f' : '#9b9a97',
-                            background: 'transparent',
-                            border: 'none',
-                            borderBottom: filter === tab.value ? '2px solid #37352f' : '2px solid transparent',
-                            cursor: 'pointer',
-                            transition: 'all 0.15s ease',
-                            marginBottom: '-1px',
-                        }}
+                        className={`filter-tab ${filter === tab.value ? 'active' : ''}`}
                     >
                         {tab.label}
                     </button>
@@ -477,13 +222,13 @@ export default function TransactionsClient({
 
             {filtered.length === 0 ? (
                 <div className="empty-state">
-                    <p style={{ fontSize: '14px' }}>Nenhum lançamento neste período</p>
-                    <p style={{ fontSize: '13px', marginTop: '4px' }}>
+                    <p>Nenhum lançamento neste período</p>
+                    <p className="text-muted-sm" style={{ marginTop: '4px' }}>
                         Use as setas para navegar entre períodos ou clique em &quot;Novo Lançamento&quot;
                     </p>
                 </div>
             ) : (
-                <div className="glass-card" style={{ overflow: 'hidden' }}>
+                <div className="glass-card overflow-hidden">
                     <div className="table-container">
                         <table className="data-table">
                             <thead>
@@ -492,19 +237,19 @@ export default function TransactionsClient({
                                     <th>Descrição</th>
                                     <th>Obra</th>
                                     <th>Categoria</th>
-                                    <th style={{ textAlign: 'right' }}>Valor</th>
+                                    <th className="text-right">Valor</th>
                                     <th>Parcela</th>
-                                    <th style={{ width: '80px', textAlign: 'right' }}>Ações</th>
+                                    <th className="text-right" style={{ width: '80px' }}>Ações</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {paginatedItems.map((t) => (
                                     <tr key={t.id}>
-                                        <td style={{ color: '#9b9a97', fontSize: '13px', whiteSpace: 'nowrap' }}>
+                                        <td className="text-muted-sm text-nowrap">
                                             {formatDate(t.date)}
                                         </td>
-                                        <td style={{ fontWeight: 500 }}>{t.description}</td>
-                                        <td style={{ color: '#9b9a97' }}>{t.project?.name || '—'}</td>
+                                        <td className="text-bold">{t.description}</td>
+                                        <td className="text-muted">{t.project?.name || '—'}</td>
                                         <td>
                                             <span
                                                 className={
@@ -515,45 +260,30 @@ export default function TransactionsClient({
                                             </span>
                                         </td>
                                         <td
-                                            style={{
-                                                textAlign: 'right',
-                                                fontWeight: 600,
-                                                color: t.type === 'INCOME' ? '#16a34a' : '#dc2626',
-                                                whiteSpace: 'nowrap',
-                                            }}
+                                            className={`text-right text-bold text-nowrap ${t.type === 'INCOME' ? 'text-income' : 'text-expense'}`}
                                         >
                                             {t.type === 'INCOME' ? '+' : '-'}{formatCurrency(t.amount)}
                                         </td>
-                                        <td style={{ color: '#9b9a97', fontSize: '13px' }}>
+                                        <td className="text-muted-sm">
                                             {t.total_installments && t.total_installments > 1
                                                 ? `${t.installment_number}/${t.total_installments}`
                                                 : '—'}
                                         </td>
                                         <td>
-                                            <div style={{ display: 'flex', gap: '4px', justifyContent: 'flex-end' }}>
+                                            <div className="action-row">
                                                 <button
                                                     onClick={() => openEdit(t)}
-                                                    style={{
-                                                        background: 'transparent',
-                                                        border: 'none',
-                                                        borderRadius: '4px',
-                                                        padding: '6px',
-                                                        cursor: 'pointer',
-                                                        color: '#9b9a97',
-                                                    }}
+                                                    className="icon-btn"
+                                                    title="Editar"
+                                                    aria-label={`Editar ${t.description}`}
                                                 >
                                                     <Pencil size={15} />
                                                 </button>
                                                 <button
                                                     onClick={() => setDeleteTarget(t)}
-                                                    style={{
-                                                        background: 'transparent',
-                                                        border: 'none',
-                                                        borderRadius: '4px',
-                                                        padding: '6px',
-                                                        cursor: 'pointer',
-                                                        color: '#9b9a97',
-                                                    }}
+                                                    className="icon-btn"
+                                                    title="Excluir"
+                                                    aria-label={`Excluir ${t.description}`}
                                                 >
                                                     <Trash2 size={15} />
                                                 </button>
@@ -580,7 +310,7 @@ export default function TransactionsClient({
                 onClose={resetForm}
                 title={editingTransaction ? 'Editar Lançamento' : 'Novo Lançamento'}
             >
-                <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <form onSubmit={handleSubmit} className="form-modal">
                     <div>
                         <label className="form-label">Tipo</label>
                         <select
@@ -611,7 +341,7 @@ export default function TransactionsClient({
                             required
                         />
                     </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
+                    <div className="form-row">
                         <div>
                             <label className="form-label">Valor Total (R$)</label>
                             <input
@@ -655,7 +385,7 @@ export default function TransactionsClient({
                         </div>
                     </div>
                     {parseInt(formData.installments) > 1 && (
-                        <p style={{ fontSize: '12px', color: '#737373', marginTop: '-8px' }}>
+                        <p className="form-hint">
                             {parseInt(formData.installments)} parcelas de{' '}
                             <strong>
                                 {formatCurrency(
@@ -700,7 +430,7 @@ export default function TransactionsClient({
                             ))}
                         </select>
                     </div>
-                    <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '4px' }}>
+                    <div className="form-actions">
                         <button type="button" className="btn-secondary" onClick={resetForm}>
                             Cancelar
                         </button>

@@ -114,3 +114,8 @@ export interface TransactionFormData {
   category_id: string;
   installments?: number;
 }
+
+// Server action result type
+export type ActionResult<T> =
+  | { success: true; data: T }
+  | { success: false; error: string };
