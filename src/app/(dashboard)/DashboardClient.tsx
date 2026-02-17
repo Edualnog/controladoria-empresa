@@ -153,7 +153,10 @@ export default function DashboardClient({ transactions }: DashboardClientProps) 
         () => calculateTotals(filtered),
         [filtered]
     );
-    const profitByProject = useMemo(() => calculateProfitByProject(filtered), [filtered]);
+    const profitByProject = useMemo(() => {
+        const all = calculateProfitByProject(filtered);
+        return all.filter((p) => p.projectId !== 'no-project');
+    }, [filtered]);
     const monthlyData = useMemo(() => calculateMonthlyData(filtered), [filtered]);
     const expenseByCategory = useMemo(() => calculateExpenseByCategory(filtered), [filtered]);
     const forecast = useMemo(() => calculateForecast(transactions), [transactions]);
