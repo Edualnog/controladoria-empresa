@@ -42,7 +42,7 @@ export interface Transaction {
   amount: number;
   date: string;
   type: TransactionType;
-  project_id: string;
+  project_id: string | null;
   category_id: string;
   company_id: string;
   installment_group_id: string | null;

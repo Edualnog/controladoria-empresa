@@ -135,7 +135,7 @@ export async function createTransaction(data: {
     amount: number;
     date: string;
     type: string;
-    project_id: string;
+    project_id?: string | null;
     category_id: string;
     installments?: number;
 }) {
@@ -163,7 +163,7 @@ export async function createTransaction(data: {
                 amount: installmentAmount,
                 date: installmentDate.toISOString().split('T')[0],
                 type: data.type,
-                project_id: data.project_id,
+                project_id: data.project_id || null,
                 category_id: data.category_id,
                 company_id: companyId,
                 installment_group_id: groupId,
@@ -193,7 +193,7 @@ export async function createTransaction(data: {
                 amount: data.amount,
                 date: data.date,
                 type: data.type,
-                project_id: data.project_id,
+                project_id: data.project_id || null,
                 category_id: data.category_id,
                 company_id: companyId,
             })
@@ -215,7 +215,7 @@ export async function updateTransaction(id: string, data: {
     amount: number;
     date: string;
     type: string;
-    project_id: string;
+    project_id?: string | null;
     category_id: string;
 }) {
     const supabase = await createClient();
@@ -227,7 +227,7 @@ export async function updateTransaction(id: string, data: {
             amount: data.amount,
             date: data.date,
             type: data.type,
-            project_id: data.project_id,
+            project_id: data.project_id || null,
             category_id: data.category_id,
         })
         .eq('id', id)

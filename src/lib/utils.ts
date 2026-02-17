@@ -45,8 +45,8 @@ export function calculateProfitByProject(transactions: Transaction[]): ProjectPr
     const map = new Map<string, ProjectProfit>();
 
     transactions.forEach((t) => {
-        const projectName = t.project?.name || 'Sem projeto';
-        const projectId = t.project_id;
+        const projectName = t.project?.name || 'Sem Obra';
+        const projectId = t.project_id || 'no-project';
 
         if (!map.has(projectId)) {
             map.set(projectId, {

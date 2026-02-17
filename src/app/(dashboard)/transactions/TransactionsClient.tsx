@@ -244,7 +244,7 @@ export default function TransactionsClient({
             amount: transaction.amount.toString(),
             date: transaction.date,
             type: transaction.type,
-            project_id: transaction.project_id,
+            project_id: transaction.project_id || '',
             category_id: transaction.category_id,
             installments: '1',
         });
@@ -666,16 +666,15 @@ export default function TransactionsClient({
                         </p>
                     )}
                     <div>
-                        <label className="form-label">Obra</label>
+                        <label className="form-label">Obra (Opcional)</label>
                         <select
                             className="form-input"
                             value={formData.project_id}
                             onChange={(e) =>
                                 setFormData({ ...formData, project_id: e.target.value })
                             }
-                            required
                         >
-                            <option value="">Selecione uma obra</option>
+                            <option value="">Sem obra (opcional)</option>
                             {projects.map((p) => (
                                 <option key={p.id} value={p.id}>
                                     {p.name}
