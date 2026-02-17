@@ -9,8 +9,11 @@ import {
 import type { Transaction, Project, Category, TransactionType } from '@/types';
 import Modal from '@/components/ui/Modal';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
+import Pagination from '@/components/ui/Pagination';
 import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight, Calendar } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/lib/utils';
+
+const ITEMS_PER_PAGE = 10;
 
 interface TransactionsClientProps {
     initialTransactions: Transaction[];
@@ -61,6 +64,7 @@ export default function TransactionsClient({
     const [deleteTarget, setDeleteTarget] = useState<Transaction | null>(null);
     const [loading, setLoading] = useState(false);
     const [filter, setFilter] = useState<'ALL' | TransactionType>('ALL');
+    const [currentPage, setCurrentPage] = useState(1);
     const [formData, setFormData] = useState({
         description: '',
         amount: '',
@@ -145,6 +149,7 @@ export default function TransactionsClient({
 
     // Filter transactions by period and type
     const filtered = useMemo(() => {
+        setCurrentPage(1);
         let result = transactions.filter(
             (t) => t.date >= periodRange.startStr && t.date <= periodRange.endStr
         );
@@ -153,6 +158,12 @@ export default function TransactionsClient({
         }
         return result.sort((a, b) => b.date.localeCompare(a.date));
     }, [transactions, periodRange, filter]);
+
+    const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
+    const paginatedItems = filtered.slice(
+        (currentPage - 1) * ITEMS_PER_PAGE,
+        currentPage * ITEMS_PER_PAGE
+    );
 
     // Calculate totals for the period
     const periodTotals = useMemo(() => {
@@ -487,7 +498,7 @@ export default function TransactionsClient({
                                 </tr>
                             </thead>
                             <tbody>
-                                {filtered.map((t) => (
+                                {paginatedItems.map((t) => (
                                     <tr key={t.id}>
                                         <td style={{ color: '#9b9a97', fontSize: '13px', whiteSpace: 'nowrap' }}>
                                             {formatDate(t.date)}
@@ -553,6 +564,13 @@ export default function TransactionsClient({
                             </tbody>
                         </table>
                     </div>
+                    <Pagination
+                        currentPage={currentPage}
+                        totalPages={totalPages}
+                        totalItems={filtered.length}
+                        itemsPerPage={ITEMS_PER_PAGE}
+                        onPageChange={setCurrentPage}
+                    />
                 </div>
             )}
 

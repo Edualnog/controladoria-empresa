@@ -5,7 +5,10 @@ import { createProject, updateProject, deleteProject } from '@/app/actions';
 import type { Project } from '@/types';
 import Modal from '@/components/ui/Modal';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
+import Pagination from '@/components/ui/Pagination';
 import { Plus, Pencil, Trash2 } from 'lucide-react';
+
+const ITEMS_PER_PAGE = 10;
 
 interface ProjectsClientProps {
     initialProjects: Project[];
@@ -18,6 +21,13 @@ export default function ProjectsClient({ initialProjects }: ProjectsClientProps)
     const [deleteTarget, setDeleteTarget] = useState<Project | null>(null);
     const [formData, setFormData] = useState({ name: '', description: '' });
     const [loading, setLoading] = useState(false);
+    const [currentPage, setCurrentPage] = useState(1);
+
+    const totalPages = Math.ceil(projects.length / ITEMS_PER_PAGE);
+    const paginatedItems = projects.slice(
+        (currentPage - 1) * ITEMS_PER_PAGE,
+        currentPage * ITEMS_PER_PAGE
+    );
 
     const resetForm = () => {
         setFormData({ name: '', description: '' });
@@ -91,7 +101,7 @@ export default function ProjectsClient({ initialProjects }: ProjectsClientProps)
                                 </tr>
                             </thead>
                             <tbody>
-                                {projects.map((project) => (
+                                {paginatedItems.map((project) => (
                                     <tr key={project.id}>
                                         <td style={{ fontWeight: 500 }}>{project.name}</td>
                                         <td style={{ color: '#9b9a97' }}>
@@ -134,6 +144,13 @@ export default function ProjectsClient({ initialProjects }: ProjectsClientProps)
                             </tbody>
                         </table>
                     </div>
+                    <Pagination
+                        currentPage={currentPage}
+                        totalPages={totalPages}
+                        totalItems={projects.length}
+                        itemsPerPage={ITEMS_PER_PAGE}
+                        onPageChange={setCurrentPage}
+                    />
                 </div>
             )}
 

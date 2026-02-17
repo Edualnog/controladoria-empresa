@@ -1,11 +1,14 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { createCategory, updateCategory, deleteCategory } from '@/app/actions';
 import type { Category, TransactionType } from '@/types';
 import Modal from '@/components/ui/Modal';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
+import Pagination from '@/components/ui/Pagination';
 import { Plus, Pencil, Trash2 } from 'lucide-react';
+
+const ITEMS_PER_PAGE = 10;
 
 interface CategoriesClientProps {
     initialCategories: Category[];
@@ -19,11 +22,20 @@ export default function CategoriesClient({ initialCategories }: CategoriesClient
     const [formData, setFormData] = useState({ name: '', type: 'INCOME' as TransactionType });
     const [loading, setLoading] = useState(false);
     const [filter, setFilter] = useState<'ALL' | TransactionType>('ALL');
+    const [currentPage, setCurrentPage] = useState(1);
 
-    const filtered =
-        filter === 'ALL'
+    const filtered = useMemo(() => {
+        setCurrentPage(1);
+        return filter === 'ALL'
             ? categories
             : categories.filter((c) => c.type === filter);
+    }, [categories, filter]);
+
+    const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
+    const paginatedItems = filtered.slice(
+        (currentPage - 1) * ITEMS_PER_PAGE,
+        currentPage * ITEMS_PER_PAGE
+    );
 
     const resetForm = () => {
         setFormData({ name: '', type: 'INCOME' });
@@ -124,7 +136,7 @@ export default function CategoriesClient({ initialCategories }: CategoriesClient
                                 </tr>
                             </thead>
                             <tbody>
-                                {filtered.map((category) => (
+                                {paginatedItems.map((category) => (
                                     <tr key={category.id}>
                                         <td style={{ fontWeight: 500 }}>{category.name}</td>
                                         <td>
@@ -169,6 +181,13 @@ export default function CategoriesClient({ initialCategories }: CategoriesClient
                             </tbody>
                         </table>
                     </div>
+                    <Pagination
+                        currentPage={currentPage}
+                        totalPages={totalPages}
+                        totalItems={filtered.length}
+                        itemsPerPage={ITEMS_PER_PAGE}
+                        onPageChange={setCurrentPage}
+                    />
                 </div>
             )}
 
