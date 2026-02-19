@@ -1,5 +1,4 @@
 import { createClient } from '@/lib/supabase/server';
-import { createAdminClient } from '@/lib/supabase/admin';
 import type { User } from '@/types';
 
 export async function getCurrentUser(): Promise<User | null> {
@@ -20,18 +19,18 @@ export async function getCurrentUser(): Promise<User | null> {
 
     if (data) return data;
 
-    // User record doesn't exist — auto-create using admin client (bypasses RLS)
-    console.log('[auth] User record missing for', authUser.id, '- creating with admin client...');
+    // User record doesn't exist — auto-create using regular client
+    // RLS policies allow: "Users can insert their own record" (id = auth.uid())
+    // and "Authenticated users can create companies" (auth.uid() IS NOT NULL)
+    console.log('[auth] User record missing for', authUser.id, '- auto-provisioning...');
 
     try {
-        const admin = createAdminClient();
-
         const metadata = authUser.user_metadata || {};
         const userName = metadata.name || authUser.email?.split('@')[0] || 'Usuário';
         const companyName = metadata.company_name || `Empresa de ${userName}`;
 
-        // Create company
-        const { data: company, error: companyError } = await admin
+        // Create company (RLS: any authenticated user can insert)
+        const { data: company, error: companyError } = await supabase
             .from('companies')
             .insert({ name: companyName })
             .select()
@@ -42,8 +41,8 @@ export async function getCurrentUser(): Promise<User | null> {
             return null;
         }
 
-        // Create user
-        const { data: newUser, error: userError } = await admin
+        // Create user record (RLS: id = auth.uid())
+        const { data: newUser, error: userError } = await supabase
             .from('users')
             .insert({
                 id: authUser.id,
@@ -62,7 +61,7 @@ export async function getCurrentUser(): Promise<User | null> {
         console.log('[auth] User and company created successfully');
         return newUser;
     } catch (e) {
-        console.error('[auth] Admin client error:', e);
+        console.error('[auth] Auto-provisioning error:', e);
         return null;
     }
 }
