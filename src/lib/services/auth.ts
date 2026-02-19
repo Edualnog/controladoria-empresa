@@ -68,6 +68,25 @@ export async function getCurrentUser(): Promise<User | null> {
 }
 
 export async function getUserCompanyId(): Promise<string | null> {
-    const user = await getCurrentUser();
-    return user?.company_id || null;
+    try {
+        // Fast path: use the SECURITY DEFINER SQL function directly via RPC
+        // This works even without SUPABASE_SERVICE_ROLE_KEY
+        const supabase = await createClient();
+        const { data, error } = await supabase.rpc('get_user_company_id');
+
+        if (!error && data) {
+            return data as string;
+        }
+
+        // If RPC returned no data, the user record might not exist yet
+        // Fall back to getCurrentUser which can auto-provision
+        console.warn('[auth] RPC get_user_company_id returned no data, trying getCurrentUser fallback...');
+        const user = await getCurrentUser();
+        return user?.company_id || null;
+    } catch (e) {
+        console.error('[auth] getUserCompanyId error:', e);
+        // Last resort fallback
+        const user = await getCurrentUser();
+        return user?.company_id || null;
+    }
 }
